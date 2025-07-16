@@ -163,7 +163,6 @@ vim.opt.confirm = true
 
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
-
 -- Clear highlights on search when pressing <Esc> in normal mode
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
@@ -329,15 +328,15 @@ require('lazy').setup({
       },
 
       -- Document existing key chains
-      spec = {
-        { '<leader>c', group = '[C]ode', mode = { 'n', 'x' } },
-        { '<leader>d', group = '[D]ocument' },
-        { '<leader>r', group = '[R]ename' },
-        { '<leader>s', group = '[S]earch' },
-        { '<leader>w', group = '[W]orkspace' },
-        { '<leader>t', group = '[T]elescope' },
-        { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
-      },
+      --      spec = {
+      --        { '<leader>c', group = '[C]ode', mode = { 'n', 'x' } },
+      --        { '<leader>d', group = '[D]ocument' },
+      --        { '<leader>r', group = '[R]ename' },
+      --        { '<leader>s', group = '[S]earch' },
+      --        { '<leader>w', group = '[W]orkspace' },
+      --        { '<leader>t', group = '[T]elescope' },
+      --        { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
+      --      },
     },
   },
 
@@ -483,32 +482,8 @@ require('lazy').setup({
       -- Allows extra capabilities provided by nvim-cmp
       'hrsh7th/cmp-nvim-lsp',
     },
-    config = function()
-      -- Brief aside: **What is LSP?**
-      --
-      -- LSP is an initialism you've probably heard, but might not understand what it is.
-      --
-      -- LSP stands for Language Server Protocol. It's a protocol that helps editors
-      -- and language tooling communicate in a standardized fashion.
-      --
-      -- In general, you have a "server" which is some tool built to understand a particular
-      -- language (such as `gopls`, `lua_ls`, `rust_analyzer`, etc.). These Language Servers
-      -- (sometimes called LSP servers, but that's kind of like ATM Machine) are standalone
-      -- processes that communicate with some "client" - in this case, Neovim!
-      --
-      -- LSP provides Neovim with features like:
-      --  - Go to definition
-      --  - Find references
-      --  - Autocompletion
-      --  - Symbol Search
-      --  - and more!
-      --
-      -- Thus, Language Servers are external tools that must be installed separately from
-      -- Neovim. This is where `mason` and related plugins come into play.
-      --
-      -- If you're wondering about lsp vs treesitter, you can check out the wonderfully
-      -- and elegantly composed help section, `:help lsp-vs-treesitter`
 
+    config = function()
       --  This function gets run when an LSP attaches to a particular buffer.
       --    That is to say, every time a new file is opened that is associated with
       --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
@@ -532,7 +507,19 @@ require('lazy').setup({
           map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
 
           -- Find references for the word under your cursor.
-          map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
+          pcall(function() --disabling default lsp go to references
+            vim.keymap.del({ 'n', 'i', 'v' }, 'grr')
+          end)
+          pcall(function()
+            vim.keymap.del({ 'n', 'i', 'v' }, 'gra')
+          end)
+          pcall(function()
+            vim.keymap.del({ 'n', 'i', 'v' }, 'gri')
+          end)
+          pcall(function()
+            vim.keymap.del({ 'n', 'i', 'v' }, 'grn')
+          end)
+          map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences') --use telescope go ref instead of nvim default.
 
           -- Jump to the implementation of the word under your cursor.
           --  Useful when your language has ways of declaring types without an actual implementation.
@@ -562,6 +549,7 @@ require('lazy').setup({
           -- WARN: This is not Goto Definition, this is Goto Declaration.
           --  For example, in C this would take you to the header.
           map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
+          map('gH', vim.lsp.buf.hover, '[K]how [D]ocs')
 
           -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client
@@ -915,13 +903,18 @@ require('lazy').setup({
   {
     'Olical/conjure',
     init = function()
-      -- disable specific Conjure keybindings by setting legacy global variables
-      vim.g['conjure#client#clojure#nrepl#mapping#run_current_ns_tests'] = '' -- 'tn'
-      vim.g['conjure#client#clojure#nrepl#mapping#run_alternate_ns_tests'] = '' -- 'tN'
-      vim.g['conjure#client#clojure#nrepl#mapping#run_current_test'] = '' -- 'tc'
-      vim.g['conjure#client#clojure#nrepl#mapping#run_all_tests'] = '' -- 'ta'
+      vim.g['conjure#mapping#enable_defaults'] = false
+      --evals
+      vim.g['conjure#mapping#eval_root_form'] = 'e'
+      vim.g['conjure#mapping#eval_current_form'] = 'E'
+      vim.g['conjure#mapping#eval_buf'] = 'b'
+      vim.g['conjure#mapping#eval_motion'] = 'm'
+      --comment flavours
+      vim.g['conjure#mapping#eval_comment_root_form'] = 'ce'
+      vim.g['conjure#mapping#eval_comment_current_form'] = 'cE'
     end,
   },
+
   -- paredit
   {
     'freightheave/nvim-paredit',
