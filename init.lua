@@ -87,7 +87,7 @@ P.S. You can delete this when you're done too. It's your config now! :)
 -- Set <space> as the leader key
 -- See `:help mapleader`
 --  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
-vim.g.mapleader = ' '
+vim.g.mapleader = '\\'
 vim.g.maplocalleader = ' '
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
@@ -915,15 +915,11 @@ require('lazy').setup({
   {
     'Olical/conjure',
     init = function()
-      vim.g.conjure_config = {
-        mapping = {
-          ta = false,
-          tn = false,
-          tN = false,
-          tc = false,
-          tt = false,
-        },
-      }
+      -- disable specific Conjure keybindings by setting legacy global variables
+      vim.g['conjure#client#clojure#nrepl#mapping#run_current_ns_tests'] = '' -- 'tn'
+      vim.g['conjure#client#clojure#nrepl#mapping#run_alternate_ns_tests'] = '' -- 'tN'
+      vim.g['conjure#client#clojure#nrepl#mapping#run_current_test'] = '' -- 'tc'
+      vim.g['conjure#client#clojure#nrepl#mapping#run_all_tests'] = '' -- 'ta'
     end,
   },
   -- paredit
