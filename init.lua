@@ -912,8 +912,20 @@ require('lazy').setup({
   },
 
   --Conjure for Clojure
-  { 'Olical/conjure' },
-  --
+  {
+    'Olical/conjure',
+    init = function()
+      vim.g.conjure_config = {
+        mapping = {
+          ta = false,
+          tn = false,
+          tN = false,
+          tc = false,
+          tt = false,
+        },
+      }
+    end,
+  },
   -- paredit
   {
     'freightheave/nvim-paredit',
