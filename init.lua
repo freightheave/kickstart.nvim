@@ -203,7 +203,90 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
   callback = function()
-    vim.highlight.on_yank()
+    -- vim.highlight was renamed to vim.hl; the old name is deprecated (removed in 2.0)
+    local hl = vim.hl or vim.highlight
+    hl.on_yank()
+  end,
+})
+
+-- [[ Run/Build/Test keymaps ]]
+--  Per-language <leader>r keymaps that shell a command into a reused terminal split.
+--  No test runner plugin: Go/Python/C don't share a workflow, and Clojure testing
+--  stays in the REPL via Conjure rather than being shelled out here.
+local runner_buf ---@type integer?
+local last_run ---@type { cmd: string, cwd: string }?
+
+local function run_in_terminal(cmd, cwd)
+  last_run = { cmd = cmd, cwd = cwd }
+  if runner_buf and vim.api.nvim_buf_is_valid(runner_buf) then
+    vim.api.nvim_buf_delete(runner_buf, { force = true })
+  end
+  -- `new`, not `split`: `split` reuses the current buffer, so the `term = true`
+  -- jobstart below would convert the source file's own buffer into a terminal.
+  vim.cmd 'botright new'
+  vim.cmd 'resize 15'
+  vim.fn.jobstart(cmd, { term = true, cwd = cwd })
+  runner_buf = vim.api.nvim_get_current_buf()
+  vim.cmd 'startinsert'
+end
+
+vim.keymap.set('n', '<leader>rl', function()
+  if last_run then
+    run_in_terminal(last_run.cmd, last_run.cwd)
+  else
+    vim.notify('No previous run to repeat', vim.log.levels.WARN)
+  end
+end, { desc = '[R]e-run [L]ast' })
+
+-- cmd fields are functions (not strings) so `%` resolves against the file at
+-- keypress time, not whenever the buffer's FileType autocmd first fired.
+local runners = {
+  go = {
+    run = function()
+      return 'go run .'
+    end,
+    build = function()
+      return 'go build .'
+    end,
+    test = function()
+      return 'go test ./...'
+    end,
+  },
+  python = {
+    run = function()
+      return 'python3 ' .. vim.fn.shellescape(vim.fn.expand '%:t')
+    end,
+    test = function()
+      return 'pytest ' .. vim.fn.shellescape(vim.fn.expand '%:t')
+    end,
+  },
+  c = {
+    run = function()
+      return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o /tmp/a.out && /tmp/a.out'
+    end,
+    build = function()
+      return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o /tmp/a.out'
+    end,
+  },
+}
+
+vim.api.nvim_create_autocmd('FileType', {
+  desc = 'Set up <leader>r run/build/test keymaps for supported filetypes',
+  group = vim.api.nvim_create_augroup('kickstart-run-keymaps', { clear = true }),
+  pattern = vim.tbl_keys(runners),
+  callback = function(event)
+    local cmds = runners[vim.bo[event.buf].filetype]
+    local map = function(keys, make_cmd, desc)
+      if not make_cmd then
+        return
+      end
+      vim.keymap.set('n', keys, function()
+        run_in_terminal(make_cmd(), vim.fn.expand '%:p:h')
+      end, { buffer = event.buf, desc = desc })
+    end
+    map('<leader>rr', cmds.run, '[R]un')
+    map('<leader>rb', cmds.build, '[R]un [B]uild')
+    map('<leader>rt', cmds.test, '[R]un [T]est')
   end,
 })
 
@@ -287,6 +370,7 @@ require('lazy').setup({
     'folke/which-key.nvim',
     event = 'VimEnter', -- Sets the loading event to 'VimEnter'
     opts = {
+      preset = 'modern',
       -- delay between pressing a key and opening which-key (milliseconds)
       -- this setting is independent of vim.opt.timeoutlen
       delay = 0,
@@ -328,15 +412,17 @@ require('lazy').setup({
       },
 
       -- Document existing key chains
-      --      spec = {
-      --        { '<leader>c', group = '[C]ode', mode = { 'n', 'x' } },
-      --        { '<leader>d', group = '[D]ocument' },
-      --        { '<leader>r', group = '[R]ename' },
-      --        { '<leader>s', group = '[S]earch' },
-      --        { '<leader>w', group = '[W]orkspace' },
-      --        { '<leader>t', group = '[T]elescope' },
-      --        { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
-      --      },
+      --  NOTE: this reflects this config's actual bindings, not upstream kickstart's -
+      --  <leader>r holds both the run/build/test keys and LSP rename (<leader>rn), so
+      --  it's a mixed group rather than a single-purpose one.
+      spec = {
+        { '<leader>c', group = '[C]ode', mode = { 'n', 'x' } },
+        { '<leader>d', group = '[D]ocument' },
+        { '<leader>r', group = '[R]un / [R]ename' },
+        { '<leader>s', group = '[S]earch' },
+        { '<leader>w', group = '[W]orkspace' },
+        { '<leader>t', group = '[T]elescope' },
+      },
     },
   },
 
@@ -519,6 +605,15 @@ require('lazy').setup({
           pcall(function()
             vim.keymap.del({ 'n', 'i', 'v' }, 'grn')
           end)
+          -- grt/grx aren't remapped to anything of ours, but leaving them bound means
+          -- neovim has to wait out timeoutlen on every `gr` press to see if a longer
+          -- `grt`/`grx` sequence follows. Delete them too so `gr` fires immediately.
+          pcall(function()
+            vim.keymap.del({ 'n', 'i', 'v' }, 'grt')
+          end)
+          pcall(function()
+            vim.keymap.del({ 'n', 'i', 'v' }, 'grx')
+          end)
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences') --use telescope go ref instead of nvim default.
 
           -- Jump to the implementation of the word under your cursor.
@@ -549,7 +644,7 @@ require('lazy').setup({
           -- WARN: This is not Goto Definition, this is Goto Declaration.
           --  For example, in C this would take you to the header.
           map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
-          map('gH', vim.lsp.buf.hover, '[K]how [D]ocs')
+          map('gH', vim.lsp.buf.hover, '[H]over [D]ocs')
 
           -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client
@@ -598,9 +693,11 @@ require('lazy').setup({
           --
           -- This may be unwanted, since they displace some of your code
           if client and client_supports_method(client, vim.lsp.protocol.Methods.textDocument_inlayHint, event.buf) then
-            map('<leader>th', function()
+            -- NOTE: not <leader>th - that collides with Telescope's [T]elescope [H]elp
+            -- in the buffer-local Telescope map above, silently shadowing it.
+            map('<leader>ih', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
-            end, '[T]oggle Inlay [H]ints')
+            end, 'Toggle [I]nlay [H]ints')
           end
         end,
       })
@@ -651,9 +748,17 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
-        -- clangd = {},
-        -- gopls = {},
-        -- pyright = {},
+        clangd = {},
+        gopls = {
+          settings = {
+            gopls = {
+              gofumpt = true,
+            },
+          },
+        },
+        pyright = {},
+        ruff = {},
+        clojure_lsp = {},
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
@@ -696,22 +801,32 @@ require('lazy').setup({
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
+        'goimports', -- Used to format Go code (fixes imports)
+        'gofumpt', -- Used to format Go code (stricter gofmt)
+        'clang-format', -- Used to format C code
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
+      -- Register our capabilities and per-server settings with the built-in LSP
+      -- config store (`:help vim.lsp.config`).
+      --
+      -- NOTE: mason-lspconfig v2 dropped the `handlers` option that older Kickstart
+      -- used to wire this up. Passing it is silently ignored - not an error - so the
+      -- `servers` table above (gopls' gofumpt, lua_ls' callSnippet, ...) and these
+      -- capabilities never reached any server. Servers still attached via
+      -- `automatic_enable`, which is why it looked like it was working.
+      vim.lsp.config('*', { capabilities = capabilities })
+      for server_name, server in pairs(servers) do
+        vim.lsp.config(server_name, server)
+      end
+
       require('mason-lspconfig').setup {
         ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
-        automatic_installation = false,
-        handlers = {
-          function(server_name)
-            local server = servers[server_name] or {}
-            -- This handles overriding only values explicitly passed
-            -- by the server configuration above. Useful when disabling
-            -- certain features of an LSP (for example, turning off formatting for ts_ls)
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
-        },
+        -- Automatically `vim.lsp.enable()` whatever servers Mason has installed.
+        -- stylua is excluded: Mason installs it as a *formatter* for conform.nvim
+        -- above, but lspconfig also ships a `stylua` LSP wrapper, so leaving it in
+        -- attaches a second, redundant client to every Lua buffer.
+        automatic_enable = { exclude = { 'stylua' } },
       }
     end,
   },
@@ -750,8 +865,10 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        go = { 'goimports', 'gofumpt' },
+        python = { 'ruff_format' },
+        c = { 'clang-format' },
         -- Conform can also run multiple formatters sequentially
-        -- python = { "isort", "black" },
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
         -- javascript = { "prettierd", "prettier", stop_after_first = true },
@@ -970,8 +1087,8 @@ require('lazy').setup({
         -- list of default keybindings
         keys = {
           ['<localleader>@'] = { paredit.unwrap.unwrap_form_under_cursor, 'Splice sexp' },
-          ['>('] = { paredit.api.slurp_forwards, 'Slurp forwards' },
-          ['<)'] = { paredit.api.barf_backwards, 'Barf backwards' },
+          ['>)'] = { paredit.api.slurp_forwards, 'Slurp forwards' },
+          ['>('] = { paredit.api.barf_backwards, 'Barf backwards' },
 
           ['<)'] = { paredit.api.barf_forwards, 'Barf forwards' },
           ['<('] = { paredit.api.slurp_backwards, 'Slurp backwards' },
@@ -1143,11 +1260,30 @@ require('lazy').setup({
   },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
+    branch = 'master', -- the new 'main' branch dropped the classic `.configs`/`opts` API this config uses
     build = ':TSUpdate',
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = {
+        'bash',
+        'c',
+        'diff',
+        'html',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'query',
+        'vim',
+        'vimdoc',
+        'go',
+        'gomod',
+        'gosum',
+        'gowork',
+        'python',
+        'clojure',
+      },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
