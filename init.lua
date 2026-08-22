@@ -759,6 +759,7 @@ require('lazy').setup({
         pyright = {},
         ruff = {},
         clojure_lsp = {},
+        marksman = {}, -- markdown: link/heading completion, broken-link diagnostics
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
@@ -804,6 +805,7 @@ require('lazy').setup({
         'goimports', -- Used to format Go code (fixes imports)
         'gofumpt', -- Used to format Go code (stricter gofmt)
         'clang-format', -- Used to format C code
+        'prettier', -- Used to format Markdown
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -868,6 +870,7 @@ require('lazy').setup({
         go = { 'goimports', 'gofumpt' },
         python = { 'ruff_format' },
         c = { 'clang-format' },
+        markdown = { 'prettier' },
         -- Conform can also run multiple formatters sequentially
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
@@ -1218,6 +1221,39 @@ require('lazy').setup({
     end,
   },
 
+  -- Render markdown in the buffer: styled headings, code blocks, tables,
+  -- checkboxes and callouts, without leaving Neovim for a browser preview.
+  --  `:RenderMarkdown toggle` turns it off if you want the raw text.
+  {
+    'MeanderingProgrammer/render-markdown.nvim',
+    ft = { 'markdown' },
+    dependencies = { 'nvim-treesitter/nvim-treesitter', 'echasnovski/mini.nvim' },
+    opts = {
+      -- The plugin's default symbols assume a Nerd Font. We don't have one
+      -- (see vim.g.have_nerd_font at the top), so fall back to plain Unicode
+      -- that renders in any font. Flip have_nerd_font to true after installing
+      -- one and this automatically uses the nicer default glyphs instead.
+      heading = vim.g.have_nerd_font and {} or {
+        icons = { '# ', '## ', '### ', '#### ', '##### ', '###### ' },
+        position = 'inline',
+      },
+      code = {
+        -- 'language' shows the code block's language without needing file icons
+        style = vim.g.have_nerd_font and 'full' or 'language',
+        width = 'block',
+        left_pad = 2,
+        right_pad = 2,
+      },
+      bullet = vim.g.have_nerd_font and {} or {
+        icons = { '•', '◦', '‣', '⁃' },
+      },
+      checkbox = vim.g.have_nerd_font and {} or {
+        unchecked = { icon = '[ ] ' },
+        checked = { icon = '[x] ' },
+      },
+    },
+  },
+
   -- Highlight todo, notes, etc in comments
   { 'folke/todo-comments.nvim', event = 'VimEnter', dependencies = { 'nvim-lua/plenary.nvim' }, opts = { signs = false } },
 
@@ -1238,6 +1274,11 @@ require('lazy').setup({
       -- - sd'   - [S]urround [D]elete [']quotes
       -- - sr)'  - [S]urround [R]eplace [)] [']
       require('mini.surround').setup()
+
+      -- Icon provider. render-markdown.nvim requires one of mini.icons or
+      -- nvim-web-devicons; we already have mini.nvim, so use that rather than
+      -- pulling in a second plugin.
+      require('mini.icons').setup()
 
       -- Simple and easy statusline.
       --  You could remove this setup call if you don't like it,
