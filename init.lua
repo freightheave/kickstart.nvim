@@ -238,6 +238,16 @@ vim.keymap.set('n', '<leader>rl', function()
   end
 end, { desc = '[R]e-run [L]ast' })
 
+-- Compiled C binaries land in a private per-source path. The previous `/tmp/a.out`
+-- is a fixed name in a world-writable directory, so two C buffers - or two Neovim
+-- instances - silently overwrote each other's build, and `<leader>rr` could run a
+-- binary compiled from a different file.
+local function c_bin()
+  local dir = vim.fn.stdpath 'cache' .. '/run'
+  vim.fn.mkdir(dir, 'p')
+  return vim.fn.shellescape(dir .. '/' .. vim.fn.expand '%:t:r')
+end
+
 -- cmd fields are functions (not strings) so `%` resolves against the file at
 -- keypress time, not whenever the buffer's FileType autocmd first fired.
 local runners = {
@@ -262,10 +272,11 @@ local runners = {
   },
   c = {
     run = function()
-      return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o /tmp/a.out && /tmp/a.out'
+      local out = c_bin()
+      return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o ' .. out .. ' && ' .. out
     end,
     build = function()
-      return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o /tmp/a.out'
+      return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o ' .. c_bin()
     end,
   },
 }
@@ -502,15 +513,15 @@ require('lazy').setup({
 
       -- See `:help telescope.builtin`
       local builtin = require 'telescope.builtin'
-      vim.keymap.set('n', '<leader>th', builtin.help_tags, { desc = '[S]earch [H]elp' })
-      vim.keymap.set('n', '<leader>tk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
-      vim.keymap.set('n', '<leader>tf', builtin.find_files, { desc = '[S]earch [F]iles' })
-      vim.keymap.set('n', '<leader>ts', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
-      vim.keymap.set('n', '<leader>tw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      vim.keymap.set('n', '<leader>tg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
-      vim.keymap.set('n', '<leader>td', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
-      vim.keymap.set('n', '<leader>tr', builtin.resume, { desc = '[S]earch [R]esume' })
-      vim.keymap.set('n', '<leader>t.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
+      vim.keymap.set('n', '<leader>th', builtin.help_tags, { desc = '[T]elescope [H]elp' })
+      vim.keymap.set('n', '<leader>tk', builtin.keymaps, { desc = '[T]elescope [K]eymaps' })
+      vim.keymap.set('n', '<leader>tf', builtin.find_files, { desc = '[T]elescope [F]iles' })
+      vim.keymap.set('n', '<leader>ts', builtin.builtin, { desc = '[T]elescope [S]elect builtin' })
+      vim.keymap.set('n', '<leader>tw', builtin.grep_string, { desc = '[T]elescope current [W]ord' })
+      vim.keymap.set('n', '<leader>tg', builtin.live_grep, { desc = '[T]elescope by [G]rep' })
+      vim.keymap.set('n', '<leader>td', builtin.diagnostics, { desc = '[T]elescope [D]iagnostics' })
+      vim.keymap.set('n', '<leader>tr', builtin.resume, { desc = '[T]elescope [R]esume' })
+      vim.keymap.set('n', '<leader>t.', builtin.oldfiles, { desc = '[T]elescope Recent Files ("." for repeat)' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
 
       -- Slightly advanced example of overriding default behavior and theme
@@ -558,8 +569,8 @@ require('lazy').setup({
       -- Automatically install LSPs and related tools to stdpath for Neovim
       -- Mason must be loaded before its dependents so we need to set it up here.
       -- NOTE: `opts = {}` is the same as calling `require('mason').setup({})`
-      { 'williamboman/mason.nvim', opts = {} },
-      'williamboman/mason-lspconfig.nvim',
+      { 'mason-org/mason.nvim', opts = {} },
+      'mason-org/mason-lspconfig.nvim',
       'WhoIsSethDaniel/mason-tool-installer.nvim',
 
       -- Useful status updates for LSP.
@@ -997,27 +1008,63 @@ require('lazy').setup({
     end,
   },
 
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
+  -- Colorscheme: matched to the rest of the rice (DankMaterialShell's
+  -- "Gruvbox Material Tan" theme, the Ghostty palette and the vconsole vtrgb).
+  -- `foreground = 'material'` + `background = 'medium'` reproduces that palette
+  -- exactly - red #ea6962, yellow #d8a657, green #a9b665, blue #7daea3,
+  -- purple #d3869b, aqua #89b482 on #32302f - and its light variant matches the
+  -- rice's light mode just as exactly, which is what makes the toggle below
+  -- stay in step with the system in either direction.
+  {
+    'sainnhe/gruvbox-material',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     config = function()
-      ---@diagnostic disable-next-line: missing-fields
-      require('tokyonight').setup {
-        styles = {
-          comments = { italic = false }, -- Disable italics in comments
-        },
-      }
+      -- gruvbox-material is a Vimscript colorscheme: it reads these globals when
+      -- `:colorscheme` runs, so they have to be set first.
+      vim.g.gruvbox_material_background = 'medium'
+      vim.g.gruvbox_material_foreground = 'material'
+      vim.g.gruvbox_material_disable_italic_comment = 1 -- as tokyonight was configured
+      vim.g.gruvbox_material_better_performance = 1
 
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
+      -- Deliberately NOT setting `vim.o.background` here. It already defaults to
+      -- 'dark', and Neovim sets it at startup from the terminal's OSC 11 reply -
+      -- so a fresh nvim in Ghostty already comes up matching the terminal. Pinning
+      -- it would throw that detection away.
+      vim.cmd.colorscheme 'gruvbox-material'
+
+      -- Light/dark toggle with no script and no plugin support: 'background' is a
+      -- builtin option, and Neovim re-sources the active colorscheme whenever it
+      -- changes, so gruvbox-material repaints itself into the other variant.
+      vim.keymap.set('n', '<leader>bg', function()
+        vim.o.background = vim.o.background == 'dark' and 'light' or 'dark'
+        vim.notify('background=' .. vim.o.background)
+      end, { desc = 'Toggle light/dark [B]ack[G]round' })
     end,
   },
+
+  -- Previous colorscheme, kept for reference - re-enable this block and remove
+  -- the gruvbox-material one above to go back.
+  -- { -- You can easily change to a different colorscheme.
+  --   -- Change the name of the colorscheme plugin below, and then
+  --   -- change the command in the config to whatever the name of that colorscheme is.
+  --   --
+  --   -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+  --   'folke/tokyonight.nvim',
+  --   priority = 1000, -- Make sure to load this before all the other start plugins.
+  --   config = function()
+  --     ---@diagnostic disable-next-line: missing-fields
+  --     require('tokyonight').setup {
+  --       styles = {
+  --         comments = { italic = false }, -- Disable italics in comments
+  --       },
+  --     }
+  --
+  --     -- Load the colorscheme here.
+  --     -- Like many other themes, this one has different styles, and you could load
+  --     -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+  --     vim.cmd.colorscheme 'tokyonight-night'
+  --   end,
+  -- },
 
   --Conjure for Clojure
   {
@@ -1301,47 +1348,107 @@ require('lazy').setup({
   },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
-    branch = 'master', -- the new 'main' branch dropped the classic `.configs`/`opts` API this config uses
+    -- NOTE: this was on `branch = 'master'`, which is frozen upstream and whose
+    -- README states plainly that "Neovim 0.12 is not supported". On 0.12 a query
+    -- match maps a capture id to a *list* of nodes, but master's
+    -- `query_predicates.lua` still reads it as a single node, so its directives
+    -- (`set-lang-from-info-string!`, `inject-language!`, ...) die with "attempt to
+    -- call method 'range' (a nil value)" the moment an injection is parsed - i.e.
+    -- on any fenced code block in markdown. `main` is the supported branch here.
+    branch = 'main',
+    -- Upstream: "This plugin does not support lazy-loading." Without this,
+    -- render-markdown.nvim listing it as a dependency defers it to markdown files.
+    lazy = false,
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs', -- Sets main module to use for opts
-    -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-    opts = {
-      ensure_installed = {
+    config = function()
+      local ts = require 'nvim-treesitter'
+
+      -- No `setup()` call is needed: the default install_dir is
+      -- `stdpath('data')/site`, which Neovim already carries on 'runtimepath'.
+
+      -- `main` has no `ensure_installed`/`auto_install` options - installing is an
+      -- explicit async call. Add a language here (or run `:TSInstall <lang>` once)
+      -- rather than expecting it to appear on first use the way master did.
+      local ensure_installed = {
         'bash',
         'c',
+        'clojure',
         'diff',
-        'html',
-        'lua',
-        'luadoc',
-        'markdown',
-        'markdown_inline',
-        'query',
-        'vim',
-        'vimdoc',
         'go',
         'gomod',
         'gosum',
         'gowork',
+        'html',
+        'json',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
         'python',
-        'clojure',
-      },
-      -- Autoinstall languages that are not installed
-      auto_install = true,
-      highlight = {
-        enable = true,
-        -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
-        --  If you are experiencing weird indenting issues, add the language to
-        --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
-      },
-      indent = { enable = true, disable = { 'ruby' } },
-    },
-    -- There are additional nvim-treesitter modules that you can use to interact
-    -- with nvim-treesitter. You should go explore a few and see what interests you:
-    --
-    --    - Incremental selection: Included, see `:help nvim-treesitter-incremental-selection-mod`
-    --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
-    --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
+        'query',
+        'toml',
+        'vim',
+        'vimdoc',
+        'yaml',
+        -- The remaining nvim-paredit filetypes, so they highlight like Clojure.
+        'commonlisp',
+        'fennel',
+        'janet_simple',
+        'scheme',
+      }
+
+      -- Check 'runtimepath', not just nvim-treesitter's own install dir: Neovim
+      -- ships parsers *and* matching queries for c, lua, markdown, markdown_inline,
+      -- query, vim and vimdoc, and those work without nvim-treesitter installing
+      -- its own copy. Only report what genuinely has no parser anywhere.
+      local missing = vim.tbl_filter(function(lang)
+        return #vim.api.nvim_get_runtime_file('parser/' .. lang .. '.so', false) == 0
+      end, ensure_installed)
+
+      if #missing > 0 then
+        -- `main` shells out to the tree-sitter CLI to build parsers; without it
+        -- every install fails, so say so once instead of logging a failure per
+        -- parser on every startup.
+        if vim.fn.executable 'tree-sitter' == 1 then
+          ts.install(missing)
+        else
+          vim.schedule(function()
+            vim.notify(
+              'nvim-treesitter: tree-sitter CLI not found, cannot build parsers for: '
+                .. table.concat(missing, ', ')
+                .. '\nInstall it with `sudo pacman -S tree-sitter-cli`, then run `:TSUpdate`.',
+              vim.log.levels.WARN
+            )
+          end)
+        end
+      end
+
+      -- `main` ships queries but turns nothing on: highlighting and indenting are
+      -- Neovim features that the user opts into per buffer. This replaces the old
+      -- `highlight = { enable = true }` / `indent = { enable = true }` opts.
+      vim.api.nvim_create_autocmd('FileType', {
+        desc = 'Enable treesitter highlighting and indent where a parser exists',
+        group = vim.api.nvim_create_augroup('kickstart-treesitter', { clear = true }),
+        callback = function(event)
+          local lang = vim.treesitter.language.get_lang(vim.bo[event.buf].filetype)
+          if not lang then
+            return
+          end
+          -- pcall: a filetype can map to a language we have no parser for, and a
+          -- parser built against a different grammar revision than the installed
+          -- queries can throw. Either way, fall back to regex highlighting rather
+          -- than tearing down the whole FileType autocmd chain.
+          if not pcall(vim.treesitter.start, event.buf, lang) then
+            return
+          end
+          -- Treesitter indent is upstream-flagged experimental. Markdown in
+          -- particular indents worse than the builtin rules, so leave it alone.
+          if lang ~= 'markdown' and lang ~= 'markdown_inline' then
+            vim.bo[event.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+          end
+        end,
+      })
+    end,
   },
 
   -- The following comments only work if you have downloaded the kickstart repo, not just copy pasted the
