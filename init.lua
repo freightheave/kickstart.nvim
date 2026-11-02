@@ -90,8 +90,126 @@ P.S. You can delete this when you're done too. It's your config now! :)
 vim.g.mapleader = '\\'
 vim.g.maplocalleader = ' '
 
--- Set to true if you have a Nerd Font installed and selected in the terminal
+-- Set to true if you have a Nerd Font installed and selected in the terminal.
+-- Ghostty is running with its stock font, so this stays false for terminal
+-- Neovim. The Neovide block directly below turns it on for the GUI, which
+-- selects its own font and therefore knows a Nerd Font is available.
 vim.g.have_nerd_font = false
+
+-- [[ Neovide (GUI) settings ]]
+--  `vim.g.neovide` only exists when Neovim is embedded in Neovide, so terminal
+--  Neovim skips this whole block.
+--
+--  Division of labour: the window frame, font and renderer are configured in
+--  ~/.config/neovide/config.toml, because Neovide needs them before Neovim
+--  boots. This block is only the things Neovim itself has to set.
+if vim.g.neovide then
+  -- config.toml pins JetBrainsMono Nerd Font Mono, so every `have_nerd_font`
+  -- branch further down (which-key icons, mini.statusline, lazy.nvim's UI,
+  -- render-markdown glyphs, diagnostic signs) can use real glyphs instead of the
+  -- ASCII/emoji fallbacks.
+  --  NOTE: this also flips `enabled` on nvim-web-devicons, so the first Neovide
+  --  launch will have lazy.nvim install that plugin.
+  vim.g.have_nerd_font = true
+
+  -- GUI apps launched from Finder/Dock/Spotlight inherit launchd's environment
+  -- rather than the shell's. This machine's launchd PATH does currently include
+  -- Homebrew, but nothing sets it persistently (no LaunchAgent runs `setenv
+  -- PATH`), so it can quietly revert. Without Homebrew on PATH this config fails
+  -- in non-obvious ways: `tree-sitter` (nvim-treesitter's `main` branch shells
+  -- out to the CLI to build parsers), `make` (telescope-fzf-native's build step)
+  -- and `node` (pyright and marksman are Node programs) all vanish.
+  for _, dir in ipairs { '/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin' } do
+    if not (':' .. (vim.env.PATH or '') .. ':'):find(':' .. dir .. ':', 1, true) then
+      vim.env.PATH = dir .. ':' .. (vim.env.PATH or '')
+    end
+  end
+
+  -- Left Option has to send Meta, or nvim-paredit's wrap mappings (`<a-w>(`,
+  -- `<a-w>[`, `<a-w>{`, configured further down) are physically untypeable -
+  -- macOS would insert  π  “  ”  instead. Right Option is left alone so accented
+  -- characters still work.
+  vim.g.neovide_input_macos_option_key_is_meta = 'only_left'
+
+  -- Breathing room between the window chrome and the text grid.
+  vim.g.neovide_padding_top = 8
+  vim.g.neovide_padding_bottom = 8
+  vim.g.neovide_padding_left = 8
+  vim.g.neovide_padding_right = 8
+
+  -- Cursor slides with a full-length smear (Neovide's defaults), everywhere.
+  -- Set any of the lengths to 0 to switch that effect off entirely.
+  vim.g.neovide_cursor_animation_length = 0.15
+  vim.g.neovide_cursor_trail_size = 1.0
+  vim.g.neovide_cursor_animate_in_insert_mode = true
+  vim.g.neovide_cursor_animate_command_line = true
+  -- Particle wake behind the cursor. Other modes: 'railgun', 'pixiedust',
+  -- 'sonicboom', 'ripple', 'wireframe', or a list to combine, e.g. { 'torpedo', 'ripple' }.
+  vim.g.neovide_cursor_vfx_mode = 'torpedo'
+  vim.g.neovide_scroll_animation_length = 0.2
+  vim.g.neovide_position_animation_length = 0.1
+
+  -- Soften the backdrop behind Telescope / which-key / LSP floats.
+  vim.g.neovide_floating_blur_amount_x = 2.0
+  vim.g.neovide_floating_blur_amount_y = 2.0
+  vim.g.neovide_floating_shadow = true
+
+  vim.g.neovide_hide_mouse_when_typing = true
+  vim.g.neovide_remember_window_size = true
+  vim.g.neovide_remember_window_position = true
+
+  -- Pinned dark to match the hard-coded `tokyonight-night` colorscheme below.
+  -- 'auto' would track the macOS appearance and flip `background` to light,
+  -- which that colorscheme has no light variant to answer with.
+  vim.g.neovide_theme = 'dark'
+
+  -- Opaque. For a translucent window use something between 0.8 and 1.0 - but it
+  -- costs contrast, which is noticeable with `cursorline` enabled below.
+  vim.g.neovide_opacity = 1.0
+
+  -- Confirm before discarding unsaved buffers when the window is closed with the
+  -- mouse or Cmd-Q. The `confirm` option set below only covers `:q` typed inside
+  -- Neovim, which a GUI window close never goes through.
+  vim.g.neovide_confirm_quit = true
+
+  -- [[ macOS Cmd keybindings ]]
+  --  `<D-...>` is the Command key. A terminal can never send these, which is why
+  --  they live in here rather than with the main keymaps below.
+  local function gmap(mode, lhs, rhs, desc)
+    vim.keymap.set(mode, lhs, rhs, { desc = desc, silent = true })
+  end
+
+  -- `clipboard=unnamedplus` below already routes y/p through the system
+  -- clipboard; these exist purely for macOS muscle memory.
+  --  Copy/cut are visual-mode only on purpose: in normal mode `"+y` and `"+d`
+  --  are incomplete operators, so Cmd-C with nothing selected would silently
+  --  hang waiting for a motion rather than doing nothing.
+  gmap('v', '<D-c>', '"+y', 'Copy selection to system clipboard')
+  gmap('v', '<D-x>', '"+d', 'Cut selection to system clipboard')
+  gmap({ 'n', 'v' }, '<D-v>', '"+p', 'Paste from system clipboard')
+  gmap('i', '<D-v>', '<C-r>+', 'Paste from system clipboard')
+  gmap('c', '<D-v>', '<C-r>+', 'Paste from system clipboard')
+  -- In a terminal buffer, drop to normal mode to paste, then resume inserting.
+  gmap('t', '<D-v>', '<C-\\><C-n>"+pi', 'Paste from system clipboard')
+  gmap({ 'n', 'i', 'v' }, '<D-s>', '<Cmd>write<CR>', 'Save file')
+  gmap('n', '<D-a>', 'ggVG', 'Select all')
+
+  -- Cmd +/-/0 zoom, the way every other macOS app does it.
+  vim.g.neovide_scale_factor = 1.0
+  local function rescale(by)
+    local next_scale = (vim.g.neovide_scale_factor or 1.0) * by
+    vim.g.neovide_scale_factor = math.min(math.max(next_scale, 0.5), 3.0)
+  end
+  gmap('n', '<D-=>', function()
+    rescale(1.1)
+  end, 'Zoom in')
+  gmap('n', '<D-->', function()
+    rescale(1 / 1.1)
+  end, 'Zoom out')
+  gmap('n', '<D-0>', function()
+    vim.g.neovide_scale_factor = 1.0
+  end, 'Reset zoom')
+end
 
 -- [[ Setting options ]]
 -- See `:help vim.opt`
@@ -268,6 +386,14 @@ local runners = {
       return 'cc -Wall -g ' .. vim.fn.shellescape(vim.fn.expand '%:t') .. ' -o /tmp/a.out'
     end,
   },
+  lua = {
+    run = function()
+      return 'lua ' .. vim.fn.shellescape(vim.fn.expand '%:t')
+    end,
+    test = function()
+      return 'busted ' .. vim.fn.shellescape(vim.fn.expand '%:t')
+    end,
+  },
 }
 
 vim.api.nvim_create_autocmd('FileType', {
@@ -436,7 +562,7 @@ require('lazy').setup({
   { -- Fuzzy Finder (files, lsp, etc)
     'nvim-telescope/telescope.nvim',
     event = 'VimEnter',
-    branch = '0.1.x',
+    branch = 'master',
     dependencies = {
       'nvim-lua/plenary.nvim',
       { -- If encountering errors, see telescope-fzf-native README for installation instructions
@@ -1019,6 +1145,42 @@ require('lazy').setup({
     end,
   },
 
+  { -- Splash screen shown on startup (renders fine in Neovide, since it's
+    -- just buffer content like anything else the GUI draws).
+    'folke/snacks.nvim',
+    priority = 1000, -- load early, like the colorscheme above, so it's ready before VimEnter
+    lazy = false,
+    opts = {
+      dashboard = {
+        sections = {
+          { section = 'header' },
+          {
+            icon = vim.g.have_nerd_font and ' ' or '🗝 ',
+            title = 'Keymaps',
+            section = 'keys',
+            indent = 2,
+            padding = 1,
+          },
+          {
+            icon = vim.g.have_nerd_font and ' ' or '🕘 ',
+            title = 'Recent Files',
+            section = 'recent_files',
+            indent = 2,
+            padding = 1,
+          },
+          {
+            icon = vim.g.have_nerd_font and ' ' or '📁 ',
+            title = 'Projects',
+            section = 'projects',
+            indent = 2,
+            padding = 1,
+          },
+          { section = 'startup' },
+        },
+      },
+    },
+  },
+
   --Conjure for Clojure
   {
     'Olical/conjure',
@@ -1301,12 +1463,18 @@ require('lazy').setup({
   },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
-    branch = 'master', -- the new 'main' branch dropped the classic `.configs`/`opts` API this config uses
+    -- The 'master' branch is incompatible with Neovim 0.12+ (its bundled
+    -- query_predicates.lua compat shim clashes with directives Neovim now
+    -- implements natively, e.g. crashing on markdown fenced code blocks with
+    -- "attempt to call method 'range' (a nil value)"). 'main' is a full,
+    -- incompatible rewrite with a different setup API (no more
+    -- `.configs`/`opts`) - see below. Requires the `tree-sitter` CLI
+    -- (`brew install tree-sitter-cli`), not just a C compiler.
+    branch = 'main',
+    lazy = false, -- main branch does not support lazy-loading
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs', -- Sets main module to use for opts
-    -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-    opts = {
-      ensure_installed = {
+    init = function()
+      local ensure_installed = {
         'bash',
         'c',
         'diff',
@@ -1324,18 +1492,29 @@ require('lazy').setup({
         'gowork',
         'python',
         'clojure',
-      },
-      -- Autoinstall languages that are not installed
-      auto_install = true,
-      highlight = {
-        enable = true,
-        -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
-        --  If you are experiencing weird indenting issues, add the language to
-        --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
-      },
-      indent = { enable = true, disable = { 'ruby' } },
-    },
+      }
+      local installed = require('nvim-treesitter.config').get_installed()
+      local to_install = vim.iter(ensure_installed)
+        :filter(function(lang)
+          return not vim.tbl_contains(installed, lang)
+        end)
+        :totable()
+      if #to_install > 0 then
+        require('nvim-treesitter').install(to_install)
+      end
+
+      -- Highlighting and indentation are now provided by Neovim core / this
+      -- plugin directly rather than through `.configs` opts.
+      vim.api.nvim_create_autocmd('FileType', {
+        callback = function(args)
+          pcall(vim.treesitter.start)
+          -- Ruby depends on vim's regex indent rules; leave its indentexpr alone.
+          if args.match ~= 'ruby' then
+            vim.bo[args.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+          end
+        end,
+      })
+    end,
     -- There are additional nvim-treesitter modules that you can use to interact
     -- with nvim-treesitter. You should go explore a few and see what interests you:
     --
